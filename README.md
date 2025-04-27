@@ -13,7 +13,7 @@ Speech language models align with human brain responses to natural language to a
 ## How to Cite
 
 If you use any of the insights or ideas from this poster in your work, please cite it as follows:
-
+Moussa, O., Klakow, D., & Toneva, M. (2024). Improving semantic understanding in speech language models via brain-tuning.
 
 # Contributors
 [Omer Moussa](https://www.mpi-sws.org/people/omoussa/) (omoussa@mpi-sws.org) - Corresponding Author
