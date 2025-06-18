@@ -4,7 +4,6 @@ import os
 import numpy as np
 import pandas as pd
 from argparse import ArgumentParser
-import torchaudio
 from data_utils import *
 import json
 import numpy as np
@@ -44,14 +43,13 @@ parser.add_argument('--data_path', type=str, default='../datasets/data_phonem/',
 parser.add_argument('--is_whisper', action='store_true',)
 parser.add_argument('--is_hubert', action='store_true',)
 parser.add_argument('--is_wembed', action='store_true',)
-parser.add_argument('--is_lora', action='store_true', help='Use LoRA model')
 
 
 
 ## logs args
 parser.add_argument('--save_dir', type=str, default='../outputs/phonems_preds')
-parser.add_argument('--model_suf', type=str, default='eval_phon_wav2vec', help='Model suffix')
-parser.add_argument('--exp_name', type=str, default='eval_phon_wav2vec', help='Experiment name')
+parser.add_argument('--model_suf', type=str, default='eval_phon', help='Model suffix')
+parser.add_argument('--exp_name', type=str, default='eval_phon', help='Experiment name')
 
 args = parser.parse_args()
 
@@ -62,39 +60,10 @@ device = args.device
 layers = [2, 5, 7, 8, 10, 11, 12]
 exp_name='phonem'
 
-from transformers import Wav2Vec2ForPreTraining
-
-def load_ssl_model(model_path):
-    model = Wav2Vec2ForPreTraining.from_pretrained(model_path)
-    model.eval()
-    return model.wav2vec2
-
-def get_lora_keys(state_dict):
-    lora_state_dict = {}
-    for key in state_dict.keys():
-        if 'lora_model' in key:
-            lkey = key.replace('module.lora_model.', '')
-            lora_state_dict[lkey] = state_dict[key]
-    return lora_state_dict
 
 
-def init_base_models(model_name): #TODO move to utils and move data processors here
-    #TODO: also save a processed version of the dataset
-    
-    if 'hubert' in model_name:
-        lm = HubertModel.from_pretrained(model_name)
-        lm.feature_extractor._freeze_parameters()
-    elif 'whisper' in model_name:
-        lm = WhisperModel.from_pretrained(model_name)
-    elif 'wav2vec' in model_name:
-        print('loading wav2vec model: {}'.format(model_name))
-        lm = Wav2Vec2Model.from_pretrained(f'facebook/{model_name}')
-    else:
-        raise ValueError('Model type not found')
-    
-    return lm
 
-# %%
+# preprocessing phons information
 df_train = pd.read_csv(os.path.join(timit_path, 'train_data.csv'))
 df_test = pd.read_csv(os.path.join(timit_path, 'test_data.csv'))
 df = pd.concat([df_train, df_test])
@@ -149,12 +118,12 @@ phon61_map39 = {
     'gcl':'h#','h#':'h#',  '#h':'h#',  'pau':'h#', 'epi': 'h#','nx':'n',   'ax-h':'ah','q':'h#' 
 }
 
-# %%
+
 train_dataset = train_dataset.map(normalize_phones)
 valid_dataset = valid_dataset.map(normalize_phones)
 test_dataset = test_dataset.map(normalize_phones)
 
-# %%
+# 
 train_phonetics = [phone for x in train_dataset for phone in x['phonetic'].split()]
 valid_phonetics = [phone for x in valid_dataset for phone in x['phonetic'].split()]
 test_phonetics = [phone for x in test_dataset for phone in x['phonetic'].split()]
@@ -163,7 +132,7 @@ print("num of train phones:\t", len(set(train_phonetics)))
 print("num of valid phones:\t", len(set(valid_phonetics)))
 print("num of test phones:\t", len(set(test_phonetics)))
 
-# %%
+
 phone_vocabs = set(train_phonetics)
 phone_vocabs.remove('h#')
 phone_vocabs = sorted(phone_vocabs)
@@ -176,20 +145,15 @@ def count_frequency(phonetics):
     # eliminate h# for visualization purposes
     return [phone_counts[phone] for phone in phone_vocabs] 
 
-# %%
+
 train_phone_counts = count_frequency(train_phonetics)
 valid_phone_counts = count_frequency(valid_phonetics)
 test_phone_counts  = count_frequency(test_phonetics)
 
-# %%
 train_phone_ratio = [count / sum(train_phone_counts) for count in train_phone_counts]
 valid_phone_ratio = [count / sum(valid_phone_counts) for count in valid_phone_counts]
 test_phone_ratio  = [count / sum(test_phone_counts) for count in test_phone_counts]
 
-# %% [markdown]
-# ## Load Audio File
-
-# %%
 train_dataset = (train_dataset
                  .cast_column("audio_file", Audio(sampling_rate=16_000))
                  .rename_column('audio_file', 'audio'))
@@ -206,7 +170,7 @@ print("Text:", train_dataset[rand_int]["text"])
 print("Phonetics:", train_dataset[rand_int]["phonetic"])
 print("Input array shape:", train_dataset[rand_int]["audio"]["array"].shape)
 print("Sampling rate:", train_dataset[rand_int]["audio"]["sampling_rate"])
-# ipd.Audio(data=train_dataset[rand_int]["audio"]["array"], autoplay=False, rate=16000)
+
 
 vocab_train = list(set(train_phonetics)) + [' ']
 vocab_valid = list(set(valid_phonetics)) + [' ']
@@ -214,8 +178,6 @@ vocab_test  = list(set(test_phonetics)) + [' ']
 
 vocab_dict = json.load(open(f'{data_path}/vocab.json'))
 
-
-# %%
 symbols = {"a": "ə", "ey": "eɪ", "aa": "ɑ", "ae": "æ", "ah": "ə", "ao": "ɔ",
            "aw": "aʊ", "ay": "aɪ", "ch": "ʧ", "dh": "ð", "eh": "ɛ", "er": "ər",
            "hh": "h", "ih": "ɪ", "jh": "ʤ", "ng": "ŋ",  "ow": "oʊ", "oy": "ɔɪ",
@@ -236,8 +198,7 @@ else:
     
 
 if args.is_hubert:
-    processor =  Wav2Vec2FeatureExtractor.from_pretrained(model_name, return_tensors="pt")#(feature_size=1, sampling_rate=16000, padding_value=0.0, do_normalize=True, return_attention_mask=True)  
-elif args.is_whisper:
+    processor =  Wav2Vec2FeatureExtractor.from_pretrained(model_name, return_tensors="pt")
     feature_extractor = WhisperFeatureExtractor.from_pretrained(f"{model_name}")
     tokenizer = WhisperTokenizer.from_pretrained(f"{model_name}", language="English", task="transcribe", unk_token="[UNK]", pad_token="[PAD]", word_delimiter_token="|")
     processor = WhisperProcessor(feature_extractor=feature_extractor, tokenizer=tokenizer)
@@ -257,9 +218,7 @@ def prepare_dataset(batch):
         batch["input_values"] = processor(audio["array"], sampling_rate=audio["sampling_rate"]).input_values[0]
         
     batch["input_length"] = len(batch["input_values"])
-    
-    # with processor.as_target_processor():
-    # print(batch["phonetic"])
+
     batch["labels"] = np.array([vocab_dict[k] for k in (batch["phonetic"].split(' '))])
     
     return batch
@@ -273,55 +232,14 @@ best_mean = args.model_path
 model_suf = args.model_suf
 save_root = f'{args.data_path}/phonem/'
 
-if 'base' in (args.subject):
-    if 'ssl' in args.subject:
-        print('loading SSL model from ckpt {}'.format(best_mean))
-        lm = load_ssl_model(args.model_path)
-    else:
-        lm = init_base_models(model_name)
-elif args.is_lora:
-    nc = get_n_voxels(int(args.subject))
-    nv = len(nc[nc>args.nc_thr])
-    ckpt = torch.load(best_mean)
-    ckpt_w = get_lora_keys(ckpt)
-    print(f'loading lora model with {best_mean}')
-    lm = Wav2VecLoRA(out_dim=nv,
-                     wav2vec_model_name=model_name
-                     ).lora_model
-    lm.load_state_dict(ckpt_w)        
+if 'base' in (args.subject): # for pretrained models
+
+    lm = init_base_models(model_name)
+      
 else:
-    ckpt = torch.load(best_mean)
-    ckpt_w = {}
-    nc = get_n_voxels(int(args.subject))
-
-    if args.is_wembed:
-        nv = 25600
-    else:
-        nv = len(nc[nc>args.nc_thr])
-        
-    if args.is_hubert:
-        lm = HubertLinear(nv, model_name=model_name).hubert
-        print(f'loading hubert model with {best_mean}')
-        for k in ckpt:
-            if k not in ['module.linear.weight', 'module.linear.bias']:
-                ckpt_w[k.replace('module.hubert.', '')] = ckpt[k]
-
-    elif args.is_whisper:
-        lm = WhisperLinear(nv)
-    else:
-        # d_roi = {'2': 4889, '1': 2130, '3': 2542}
-        lm = Wav2VecLinear(nv, wav2vec_model_name=model_name).wav2vec
-        # lm = Wav2VecLinear(d_roi[args.subject], wav2vec_model_name=model_name).wav2vec
-    
-        for k in ckpt:
-            if k not in ['module.linear.weight', 'module.linear.bias']:
-                ckpt_w[k.replace('module.wav2vec.', '')] = ckpt[k]
+    lm, ckpt_w = load_tuned_model(model_name, best_mean, args)
 
 
-                    
-# if 'module.' in list(ckpt.keys())[0]:
-#     ## for data parallel model
-#     ckpt = {key.replace('module.', ''): value for key, value in ckpt.items()}
 if 'base' not in args.subject:
 
     print(f'loading model with {best_mean}')
@@ -329,28 +247,13 @@ if 'base' not in args.subject:
 lm.eval()
 lm = lm.to(device)
 
-if args.is_hubert:
-    
-    features_dict_tr, labels_tr = get_probing_data(train_dataset, lm, layers, device)
-    save_pho_data(features_dict_tr, labels_tr, layers, phase='train', model_suf=model_suf, save_root=save_root)
 
-    features_dict, labels = get_probing_data(test_dataset, lm, layers, device)
-    save_pho_data(features_dict, labels, layers, phase='test', model_suf=model_suf, save_root=save_root)
+## train linear probes
+features_dict_tr, labels_tr = get_probing_data(train_dataset, lm, layers, device)
+save_pho_data(features_dict_tr, labels_tr, layers, phase='train', model_suf=model_suf, save_root=save_root)
 
-elif args.is_whisper:
-    features_dict_tr, labels_tr = get_probing_data_whisper(train_dataset, lm, layers, device)
-    save_pho_data(features_dict_tr, labels_tr, layers, phase='train', model_suf=model_suf, save_root=save_root)
-
-    features_dict, labels = get_probing_data_whisper(test_dataset, lm, layers, device) # TODO why is it different from hubert
-    save_pho_data(features_dict, labels, layers, phase='test', model_suf=model_suf, save_root=save_root)     
-
-else:
-    
-    features_dict_tr, labels_tr = get_probing_data(train_dataset, lm, layers, device)
-    save_pho_data(features_dict_tr, labels_tr, layers, phase='train', model_suf=model_suf, save_root=save_root)
-
-    features_dict, labels = get_probing_data(test_dataset, lm, layers, device)
-    save_pho_data(features_dict, labels, layers, phase='test', model_suf=model_suf, save_root=save_root)
+features_dict, labels = get_probing_data(test_dataset, lm, layers, device)
+save_pho_data(features_dict, labels, layers, phase='test', model_suf=model_suf, save_root=save_root)
 
        
 
@@ -369,8 +272,8 @@ for layer in layers:
 
 
 ## save preds
-if args.is_wembed:
-    save_dst = f"{args.save_dir}/LLama2_7b/"
+if args.is_wembed: # for lm-tuned or bigslm-tuned models
+    save_dst = f"{args.save_dir}/LLama2_7b/" 
     os.makedirs(save_dst, exist_ok=True)    
     with open(f"{args.save_dir}/LLama2_7b/{exp_name}_{model_suf}_preds.pkl", 'wb') as f:
         pickle.dump(per_ly_preds, f)

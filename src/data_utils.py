@@ -17,7 +17,63 @@ import glob
 from torch.nn.utils.rnn import pad_sequence
 import json
 import torch
+from hubert_linear import HubertLinear 
+from whisper_linear import WhisperLinear 
+from wav2vec_linear import Wav2VecLinear
+from transformers import HubertModel, Wav2Vec2Processor, Wav2Vec2FeatureExtractor
+from transformers import WhisperModel, Wav2Vec2Model
 
+
+def init_base_models(model_name):
+    
+    if 'hubert' in model_name:
+        lm = HubertModel.from_pretrained(model_name)
+        lm.feature_extractor._freeze_parameters()
+    elif 'whisper' in model_name:
+        lm = WhisperModel.from_pretrained(model_name)
+    elif 'wav2vec' in model_name:
+        lm = Wav2Vec2Model.from_pretrained(f'facebook/{model_name}')
+    else:
+        raise ValueError('Model type not found')
+    
+    return lm
+
+def load_tuned_model(model_name, best_mean, args):
+    ckpt = (torch.load(best_mean))
+    
+    ckpt_w = {}
+
+    nc = get_n_voxels(int(args.subject))
+
+    if args.is_wembed:
+        nv = 25600
+    else:
+        nv = len(nc[nc>args.nc_thr])
+        
+    if args.is_hubert:
+        lm = HubertLinear(nv, model_name=model_name).hubert
+        print(f'loading hubert model with {best_mean}')
+        for k in ckpt:
+            if k not in ['module.linear.weight', 'module.linear.bias']:
+                ckpt_w[k.replace('module.hubert.', '')] = ckpt[k]
+
+
+    elif args.is_whisper:
+        lm = WhisperLinear(nv).whisper_encoder
+        print(f'loading whisper model with {best_mean}')
+        for k in ckpt:
+            if k not in ['module.linear.weight', 'module.linear.bias']:
+                ckpt_w[k.replace('module.whisper_encoder.', '')] = ckpt[k]
+        
+    else:
+        lm = Wav2VecLinear(nv, wav2vec_model_name=model_name).wav2vec
+        for k in ckpt:
+            if k not in ['module.linear.weight', 'module.linear.bias']:
+                ckpt_w[k.replace('module.wav2vec.', '')] = ckpt[k]
+    
+    return lm, ckpt_w
+    
+    
 
 class SimpleLinearModel(nn.Module):
     def __init__(self, num_features, num_classes):

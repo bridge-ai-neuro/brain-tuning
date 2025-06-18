@@ -197,7 +197,7 @@ if __name__=='__main__':
     parser.add_argument('--model_name', type=str, default='facebook/wav2vec2-base', help='Name of the pre-trained model')
     parser.add_argument('--subject', type=int, default=3, help='Subject number')
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to use for training')
-    parser.add_argument('--logs_dir', type=str, default='../outputs/train_logs')
+    parser.add_argument('--logs_dir', type=str, default='../outputs/train_logs/wav2vec_story_mp')
     parser.add_argument('--save_dir', type=str, default='../outputs/brain_eval_results')
     
     parser.add_argument('--base_test', action='store_true', help='Whether to test the pretrained model')
