@@ -38,10 +38,10 @@ parser.add_argument('--sampling_rate', type=int, default=16000, help='Sampling r
 
 
 parser.add_argument('--model_path', type=str, default='../outputs/', help='saved model path')
-parser.add_argument('--subject', type=str, default='3', help='Subject number to train on')
+parser.add_argument('--subject', type=str, default='3', help='brain-tuning subject number, use base if pretrained evaluation is wanted')
 parser.add_argument('--data_path', type=str, default='../datasets/data_phonem/',)
-parser.add_argument('--is_whisper', action='store_true',)
-parser.add_argument('--is_hubert', action='store_true',)
+parser.add_argument('--is_whisper', action='store_true', help='Use Whisper model')
+parser.add_argument('--is_hubert', action='store_true', help='Use Hubert model')
 parser.add_argument('--is_wembed', action='store_true',)
 
 
