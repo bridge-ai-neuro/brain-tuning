@@ -12,7 +12,7 @@ delays = range(0, ndelays + 1)
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
-        
+
 def make_delayed(stim, delays, circpad=False):
     """Creates non-interpolated concatenated delayed versions of [stim] with the given [delays] 
     (in samples).
@@ -38,11 +38,13 @@ def make_delayed(stim, delays, circpad=False):
 
 TARGET_SAMPLE_RATE = 16000
 
-def extract_speech_times(   wav: torch.Tensor,
-                            chunksz_sec: float=1, contextsz_sec: float=1,
-                            num_sel_frames = 1,
-                            sampling_rate: int = 16000, require_full_context: bool = False,
-                            stereo: bool = False):
+def extract_speech_times(   
+                        wav: torch.Tensor,
+                        chunksz_sec: float=1, contextsz_sec: float=1,
+                        num_sel_frames = 1,
+                        sampling_rate: int = 16000, require_full_context: bool = False,
+                        stereo: bool = False
+                        ):
     assert (num_sel_frames == 1), f"'num_sel_frames` must be 1 to ensure causal feature extraction, but got {num_sel_frames}. "\
         "This option will be deprecated in the future."
     if stereo:
@@ -95,20 +97,24 @@ def get_inds2tr_map(wav,
     num_snippets = int(expectedtr//used_chuncksz_sec)
     aligned_wav = []
     fmri_inds = []
-    for tridx, trtime in enumerate(tr_times[trim_start:-trim_end]):
-        tdiff = trtime - times[:, 1]
-        eidx = torch.where(tdiff==0)[0]
-        if len(eidx)!=0: # match found for the time tr, TODO: can make a threshold to get more sampels
-            eidx = eidx[0]
-            end_ind = indices[eidx][1] # end of the snippet
-            start_ind = indices[max(0, eidx-num_snippets)][1] # start of the tr snippet
-            aligned_wav.append(wav[start_ind:end_ind])
+
+
+    for tridx, trtime in enumerate(tr_times[:]):
+
+        if trtime < expectedtr:
+            aligned_wav.append(torch.cat([torch.zeros(TARGET_SAMPLE_RATE), wav[:TARGET_SAMPLE_RATE]]))
+            continue
+        else:
+            sidx, eidx = TARGET_SAMPLE_RATE * int(tr_times[tridx-1]), TARGET_SAMPLE_RATE * int(tr_times[tridx])
+            if wav[sidx:eidx].shape[0] < TARGET_SAMPLE_RATE * 2:
+                aligned_wav.append(torch.cat([torch.zeros(TARGET_SAMPLE_RATE * 2 - wav[sidx:eidx].shape[0]), wav[sidx:eidx]]))
+            else:
+                aligned_wav.append(wav[sidx:eidx])
+
     return torch.vstack(aligned_wav)
 
 
-
 train_stories = list(np.load('../datasets/story_lists.npy')) #list(wordseqs.keys())
-# val_stories = [ 'souls', 'stagefright']
 test_stories = ["wheretheressmoke"]
 val_stories = ['stagefright']
 
@@ -148,7 +154,7 @@ class FMRIStory(Dataset):
                  subject,
                  sub_nc_mask,
                  read_stim_dir='../datasets/processed_stim_data_dp',
-                 read_fmri_dir='../../ds003020/derivative/preprocessed_data/', 
+                 read_fmri_dir='../../ds003020/derivative/preprocessed_data/', #dataset downloaded from openneuro 
                  delays=range(0, ndelays + 1),
                  trim_start=10,
                  trim_end=5,
@@ -175,16 +181,14 @@ class FMRIStory(Dataset):
     def fetch_data(self):
         # print(f'processing {self.story_name} for subject {self.subject}')
         self.aligned_wav = get_inds2tr_map(self.wav_tensor, self.wav_feat['indices'], self.wav_feat['times'],
-                                      wordseqs[self.story_name].tr_times, used_chuncksz_sec=self.wav_params['chunksz_sec'])
+                                      wordseqs[self.story_name].tr_times + 1, used_chuncksz_sec=self.wav_params['chunksz_sec'])
         
         self.delayed_wav = make_delayed(self.aligned_wav, self.delays).float()
         self.fmri_tensor = torch.tensor(self._load_h5py(os.path.join(self.read_fmri_dir,
                                                                      f'UTS0{self.subject}', f"{self.story_name}.hf5"))).float()
         
         assert self.delayed_wav.shape[0] == self.fmri_tensor.shape[0], "Wav and FMRI tensor should have the same time dimension"
-        # print(f'wav tensor shape: {self.delayed_wav.shape}, fmri tensor shape: {self.fmri_tensor.shape}')
     def __getitem__(self, index):
-        ## return wav, TR
 
         return self.delayed_wav[index], self.fmri_tensor[index]
   
@@ -437,122 +441,8 @@ class WhisperStory(Dataset):
         return len( self.delayed_wav) #len(wordseqs[self.story_name].tr_times[self.trim_start:-self.trim_end])#self.fmri_tensor.shape[0]
         
         
-        
     
     def _clear(self):
         self.aligned_wav = None
         self.delayed_wav = None
         self.embed_tensor = None
-
-class PairedStoryDataset(Dataset):
-    def __init__(self, stories, read_dir, delays, **wav_params):
-        super(PairedStoryDataset, self).__init__()
-        self.read_dir = read_dir
-        self.delays = delays
-        self.wav_params = wav_params
-        
-        self.story_data = []
-        self.fmri_data = []
-        self.tr_data = []
-        for story_name in stories:
-            story_dataset = FMRIStory(story_name, read_dir, delays, **wav_params)
-            self.story_data.append(story_dataset.wav_tensor)
-            self.tr_data.append(story_dataset.tr_tensor)
-            self.fmri_data.append(story_dataset.fmri_data)
-        
-        ## consider doing it dynamically for memory issues
-        self.story_data = torch.tensor(np.concatenate(self.story_data, axis=0)).float()
-        self.fmri_data = torch.tensor(np.concatenate(self.fmri_data, axis=0)).float()
-        self.tr_data = torch.tensor(np.concatenate(self.tr_data, axis=0)).float()
-
-    def __len__(self):
-        return len(self.story_data)
-
-    def __getitem(self, idx):
-        return self.story_data[idx], self.fmri_data[idx]
-    
-        
-
-      
-class PairedDataLoader(Dataset):
-    
-    def __init__(self,
-                 fmri_dir='../../ds003020/derivative/preprocessed_data/',
-                 story_dir='../datasets/processed_stim_data_dp',
-                 split='train',
-                 subject=1,
-                 trim_start=10,
-                 trim_end=5,
-                 transform=None,):
-        
-        super(PairedDataLoader, self).__init__()
-        self.fmri_dir = fmri_dir
-        self.story_dir = story_dir
-        self.transform = transform
-        self.split = split
-        self.stories = train_stories if split == 'train' else test_stories
-        self.fmri_data = []
-        self.story_data = []
-        self.trim_start = trim_start
-        self.trim_end = trim_end
-        self.fmri_shape = None
-        self.story_shape = None
-        self.subject = subject
-        
-        for story in self.stories:
-            self._load_story(story)
-        
-        self.story_data = torch.tensor(np.concatenate(self.story_data, axis=0)).float()
-        self.fmri_data = torch.tensor(np.concatenate(self.fmri_data, axis=0)).float()
-    
-    def __len__(self):
-        return len(self.story_data)
-    
-    def __getitem__(self, index):
-        return self.story_data[index], self.fmri_data[index]
-             
-    
-    def _load_story(self, story):
-        story_path = os.path.join(self.story_dir, f"{story}/downsampled_story.npy")
-        fmri_path = os.path.join(self.fmri_dir, f'UTS0{self.subject}', f'{story}.hf5')
-        
-        story_data = np.load(story_path)
-        fmri_data = self._load_h5py(fmri_path)
-        print(fmri_data.shape, story_data.shape)
-        self.fmri_shape = fmri_data.shape[1]
-        self.story_shape = story_data.shape[1]
-        
-        self.fmri_data.append(fmri_data)
-        self.story_data.append(story_data[self.trim_start:-self.trim_end])
-    
-    def _load_h5py(self, file_path, key=None):   
-
-        data = dict()
-        with h5py.File(file_path) as hf:
-            if key is None:
-                for k in hf.keys():
-                    print("{} will be loaded".format(k))
-                    data[k] = list(hf[k])
-            else:
-                data[key] = hf[key]
-        return np.nan_to_num(np.array(data['data']))
-
-
-def get_all_subjects_data(subjects, split='train'):
-    data = {}
-    for subject in subjects:
-        data[subject] = (PairedDataLoader(split=split, subject=subject))
-    return data
-
-def get_dataloaders(subjects, split='train', batch_size=1):
-    data = get_all_subjects_data(subjects, split)
-    dataloaders = {}
-    for subject in subjects:
-        dataloaders[subject] = torch.utils.data.DataLoader(data[subject], batch_size=batch_size, shuffle=True)
-    return dataloaders
-
-def get_subject_data(subject, split='train'):
-    return PairedDataLoader(split=split, subject=subject)
-
-def get_subject_dataloader(subject, split='train', batch_size=1):
-    return torch.utils.data.DataLoader(get_subject_data(subject, split), batch_size=batch_size, shuffle=True)
