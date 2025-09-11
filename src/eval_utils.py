@@ -55,7 +55,7 @@ story_lists = np.load('../datasets/story_lists.npy') #list(wordseqs.keys())
 
 
 def get_voxels_nc_mask(subject, thr=0.4):
-    sub_nc = np.load(f'../datasets/subject_NCs/UTS0{subject}.npy')
+    sub_nc = np.load(f'../subject_NCs/UTS0{subject}.npy')
     sub_neur_mask = np.where(sub_nc > thr)[0]
     out_dim = len(sub_neur_mask)  # Desired output dimension
     return sub_neur_mask, out_dim
@@ -100,7 +100,7 @@ def get_roi_fmri_mask(subject, roi=None):
     '''
     for the given ROI, get the indices of the voxels in the subject's brain predictions/fmri data
     '''
-    sub_nc = np.load(f'../datasets/subject_NCs/UTS0{subject}.npy')
+    sub_nc = np.load(f'../subject_NCs/UTS0{subject}.npy')
     
     sub_vol = cortex.Volume(sub_nc, f'UTS0{subject}', f'UTS0{subject}_auto', vmin=0, vmax=1, cmap='fire') # another way is to load `mask_thick.nii.gz` from transforms
     if roi is None:

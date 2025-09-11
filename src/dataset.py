@@ -143,8 +143,8 @@ for s in val_stories:
 ## tr files info
 import joblib
 from ridge_utils.dsutils import make_word_ds
-grids = joblib.load("../datasets/story_data/grids_huge.jbl") # Load TextGrids containing story annotations
-trfiles = joblib.load("../datasets/story_data/trfiles_huge.jbl") # Load TRFiles containing TR information
+grids = joblib.load("../datasets/story_data/grids_huge.jbl") # Load TextGrids containing story annotations; download https://utexas.app.box.com/v/EncodingModelScalingLaws/folder/230417651654
+trfiles = joblib.load("../datasets/story_data/trfiles_huge.jbl") # Load TRFiles containing TR informationl; download from https://utexas.app.box.com/v/EncodingModelScalingLaws/folder/230417651654
 wordseqs = make_word_ds(grids, trfiles)
 
 
