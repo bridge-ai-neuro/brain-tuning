@@ -95,6 +95,7 @@ if __name__ == '__main__':
 
     train_dataloaders = []
     for t_story in train_stories:
+        ## NOTE: you need to download the fMRI dataset from openneuro and the stim wav files from `https://drive.google.com/file/d/1Yp-SbM4uHZtfkDtjMuO9iavgJkkR9s5A/view?usp=sharing`
         story_ds = FMRIStory(story_name=t_story, subject=args.subject, sub_nc_mask=sub_neur_mask, **wav_params) #hangtime
         story_dl = DataLoader(story_ds, batch_size=args.batch_size, shuffle=False)
         train_dataloaders.append(story_dl)
