@@ -34,7 +34,7 @@ trim_start = 50 # Trim 50 TRs off the start of the story
 trim_end = 5 # Trim 5 off the back
 ndelays = 4 # We use 4 FIR delays (2 seconds, 4 seconds, 6 seconds, 8 seconds)
 delays = range(1, ndelays + 1)
-
+SUBJ_LIST = [1, 2, 3, ]
 
 grids = joblib.load("../datasets/story_data/grids_huge.jbl") # Load TextGrids containing story annotations
 trfiles = joblib.load("../datasets/story_data/trfiles_huge.jbl") # Load TRFiles 
